@@ -1,10 +1,15 @@
-import { createContext, ReactNode, useState } from "react";
+import { createContext, ReactNode, useEffect, useState } from "react";
+import axios from "axios";
+import { Login } from "./../page/login";
 
 type AuthContextProps = {
   children: ReactNode;
 };
 
 export type AuthTokenPayload = {
+  type: string;
+  iat: number;
+  exp: number;
   uuid: string;
   nivel: string;
   nome: string;
@@ -14,57 +19,165 @@ export type AuthTokenPayload = {
 export type AuthContextType = {
   token: string | null;
   refreshToken: string | null;
-  usuario: AuthTokenPayload | null;
   tokenValido: boolean;
   refreshTokenValido: boolean;
+  logado: AuthTokenPayload | null;
+  alertaError: string | null;
+  jaLogou: boolean;
   logar: (usuario: string, senha: string) => boolean;
   logout: () => boolean;
-  isValidToken: () => boolean;
-  isValidRefresh: () => boolean;
+  isValidToken: (token: string | null) => boolean;
+  isValidRefreshToken: (token: string | null) => boolean;
+  limparMensagemErro: () => void
 };
 
 export const AuthContext = createContext<AuthContextType>(null!);
 
 export const AuthProvider = ({ children }: AuthContextProps) => {
-  const [token, setToken] = useState(null);
-  const [refreshToken, setRefreshToken] = useState(null);
-  const [usuario, setUsuario] = useState(null);
-  const [tokenValido, setTokenValido] = useState(false);
-  const [refreshTokenValido, setRefreshTokenValido] = useState(false);
+  const KeyTokenLocalStorage = "_token";
+  const KeyRefreshTokenLocalStorage = "_refresh";
+  const [token, setToken] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState<string | null>(null);
+  const [logado, setLogado] = useState<AuthTokenPayload>(null!);
+  const [alertaError, setAlertaError] = useState(null);
+  const [jaLogou, setJaLogou] = useState(false);
+  const [tokenValido, setTokenValido] = useState<boolean>(false);
+  const [refreshTokenValido, setRefreshTokenValido] = useState<boolean>(false);
+
+  useEffect(() => {
+    const storageToken: string | null = localStorage.getItem(KeyTokenLocalStorage);
+    const storageRefreshoken: string | null = localStorage.getItem(KeyRefreshTokenLocalStorage);
+
+    if (token != storageToken) {
+      if (isValidToken(storageToken)) {
+        setToken(storageToken);
+      }
+    }
+    if (refreshToken != storageRefreshoken) {
+      if (isValidRefreshToken(storageRefreshoken)) {
+        setRefreshToken(storageRefreshoken);
+      }
+    }
+  }, [tokenValido, refreshTokenValido]);
 
   const logar = (usuario: string, senha: string): boolean => {
-    console.log(usuario,senha);
+    axios
+      .post("http://site.cms.it/auth/login", {
+        _username: usuario,
+        _password: senha,
+      })
+      .then((res) => {
+        setToken(res.data.token);
+        setRefreshToken(res.data.refresh);
+        setTokenValido(true);
+        setRefreshTokenValido(true);
+        decodeToken(res.data.token);
+      })
+      .catch((err) => {
+        // console.log(err);
+        setAlertaError(err.response.data.error.description)
+      });
+    // console.log('usuário:'+usuario,'senha:'+senha);
     return true;
   };
-  
+
+  const limparMensagemErro = ()=>{
+    setAlertaError(null);
+  }
   const logout = (): boolean => {
-    return false;
-  };
-  
-  const isValidToken = (): boolean => {
-    return false;
-  };
-  
-  const isValidRefresh = (): boolean => {
+    setToken(null);
+    setRefreshToken(null);
+    setTokenValido(false);
+    setRefreshTokenValido(false);
+    setLogado(null!);
     return false;
   };
 
+  const decodeToken = (token: string) => {
+    axios
+      .post(
+        "http://site.cms.it/auth/decode",
+        {},
+        {
+          headers: {
+            "X-Token": token,
+          },
+        }
+      )
+      .then((res) => {
+        setLogado(res.data.decode);
+      })
+      .catch((err) => {
+        console.warn(err.response.data.error.description);
+      });
+  };
+
+  const isValidToken = (token: string | null): boolean => {
+    let isValid = false;
+    if (!token) {
+      return false;
+    }
+    axios
+      .post(
+        "http://site.cms.it/auth/validar",
+        {},
+        {
+          headers: {
+            "X-Token": token,
+          },
+        }
+      )
+      .then((res) => {
+        isValid = res.data.token;
+      })
+      .catch((err) => {
+        isValid = false;
+      });
+    return isValid;
+  };
+
+  const isValidRefreshToken = (token: string | null): boolean => {
+    if (!token) {
+      return false;
+    }
+    axios
+      .post(
+        "http://site.cms.it/auth/validar",
+        {},
+        {
+          headers: {
+            "X-Token-Refresh": token,
+          },
+        }
+      )
+      .then((res) => {
+        return res.data.token;
+      })
+      .catch((err) => {
+        return false;
+      });
+    return false;
+  };
 
   return (
     <AuthContext.Provider
       value={{
         token,
-        usuario,
+        logado,
+        alertaError,
+        jaLogou,
         refreshToken,
         tokenValido,
         refreshTokenValido,
         logar,
         logout,
         isValidToken,
-        isValidRefresh
+        isValidRefreshToken,
+        limparMensagemErro
       }}
     >
-      {children}
+      {!tokenValido && <Login />}
+      {tokenValido && children}
     </AuthContext.Provider>
   );
 };
