@@ -16,13 +16,18 @@ export type AuthTokenPayload = {
   foto: string;
 };
 
+type AlertaErroUsuario = {
+  _username: string|null;
+  _password: string|null;
+}
+
 export type AuthContextType = {
   token: string | null;
   refreshToken: string | null;
   tokenValido: boolean;
   refreshTokenValido: boolean;
   logado: AuthTokenPayload | null;
-  alertaError: string | null;
+  alertaError: string | null| AlertaErroUsuario;
   jaLogou: boolean;
   logar: (usuario: string, senha: string) => boolean;
   logout: () => boolean;
